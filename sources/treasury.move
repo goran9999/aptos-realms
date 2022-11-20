@@ -10,6 +10,8 @@ module realm::Treasury{
      use realm::Members;
      use std::type_info;
 
+     friend realm::Fundraise;
+
     struct Treasury has store{
         realm:address,
         fundraise_count:u64,
@@ -64,22 +66,44 @@ module realm::Treasury{
         treasury_address
     }
 
-    fun get_treasury_as_signer(signer_cap:&SignerCapability):signer{
-        create_signer_with_capability(signer_cap)
+    public(friend) fun get_treasury_as_signer(treasury_address:address,realm_address:address):signer acquires RealmTreasuries{
+        let treasury=borrow_global<RealmTreasuries>(realm_address);
+        let treasury_data=simple_map::borrow(&treasury.treasuries,&treasury_address);
+        create_signer_with_capability(&treasury_data.signer_cap)
+    }
+
+    public(friend) fun change_fundraise_status(treasury_address:address,new_status:bool,realm_address:address)acquires RealmTreasuries{
+        let realm_treasuries=borrow_global_mut<RealmTreasuries>(realm_address);
+        let treasury_data=simple_map::borrow_mut(&mut realm_treasuries.treasuries,&treasury_address);
+        treasury_data.has_active_fundraise=new_status;
+    }
+
+    public(friend) fun get_treasury_state(treasury_address:address,realm_address:address):(address,bool,u64)acquires RealmTreasuries{
+        let treasuries=borrow_global<RealmTreasuries>(realm_address);
+        let treasury_data=simple_map::borrow(&treasuries.treasuries,&treasury_address);
+        (treasury_data.coin_address,treasury_data.has_active_fundraise,treasury_data.fundraise_count)
+    }
+
+    public (friend) fun update_fundraise_count(realm_address:address,treasury_address:address) acquires RealmTreasuries{
+        let realm_treasuries=borrow_global_mut<RealmTreasuries>(realm_address);
+        let treasury_data=simple_map::borrow_mut(&mut realm_treasuries.treasuries,&treasury_address);
+        treasury_data.fundraise_count=treasury_data.fundraise_count+1;
+
     }
 
     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15)]
-    public entry fun test_create_treasury(creator:signer,account_creator:signer,resource_account:signer,realm_account:signer)acquires RealmTreasuries{
-        Members::test_add_founder(creator,&account_creator,resource_account,&realm_account);
+    public entry fun test_create_treasury(creator:signer,account_creator:&signer,resource_account:signer,realm_account:&signer):address acquires RealmTreasuries{
+        Members::test_add_founder(creator,account_creator,resource_account,realm_account);
         let realm_address=Realm::get_realm_address_by_name(utf8(b"Genesis Realm"));
         let realm=Realm::get_realm_by_address(realm_address);
         init_treasury_resource(&realm);
-        let treasury_address=create_treasury<AptosCoin>(&account_creator,realm_address,b"First treasury");
+        let treasury_address=create_treasury<AptosCoin>(account_creator,realm_address,b"First treasury");
         let treasuries=borrow_global<RealmTreasuries>(realm_address);
         let treasury_resource=simple_map::borrow(&treasuries.treasuries,&treasury_address);
         assert!(treasury_resource.name==utf8(b"First treasury"),1);
-        let _treasury_signer=get_treasury_as_signer(&treasury_resource.signer_cap);
+        let _treasury_signer=get_treasury_as_signer(treasury_address,realm_address);
         assert!(balance<AptosCoin>(treasury_address)==0,1);
+        treasury_address
         
     }
   

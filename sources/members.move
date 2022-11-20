@@ -5,6 +5,7 @@ module realm::Members{
     use std::signer;
     use std::table;
     friend realm::Treasury;
+    friend realm::Fundraise;
     struct MemberRecord has store,key,copy,drop{
         realm_address:address,
         status:u8,
@@ -39,8 +40,14 @@ module realm::Members{
         });
         table::add(&mut borrow_global_mut<RealmMemberships>(realm_address).realms,founder_addres,MemberRecord{
             realm_address,
-            status:0,
+            status:1,
             user_address:founder_addres,
+            role:utf8(b"Founder")
+        });
+        move_to(founder,MemberRecord{
+            realm_address,
+            user_address:founder_addres,
+            status:1,
             role:utf8(b"Founder")
         });
     }
@@ -92,6 +99,9 @@ module realm::Members{
         table::borrow(&member_datas.realms,member_address).role
     }
 
+    public(friend) fun is_member(member:address):bool{
+        exists<MemberRecord>(member)
+    }
     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15)]
     public fun test_add_founder(creator:signer,account_creator:&signer,resource_account:signer,realm_account:&signer) acquires RealmMemberships{
         Realm::test_create_realm(creator,account_creator,resource_account,realm_account);

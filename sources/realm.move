@@ -8,6 +8,7 @@ module realm::Realm{
     use std::vector;
     friend realm::Members;
     friend realm::Treasury;
+    friend realm::Fundraise;
     #[test_only]
     use aptos_framework::account::create_account_for_test;
 
