@@ -1,0 +1,12 @@
+[package]
+name = 'messenger'
+version = '1.0.0'
+[dependencies.AptosFramework]
+git = 'https://github.com/aptos-labs/aptos-core.git'
+rev = 'main'
+subdir = 'aptos-move/framework/aptos-framework'
+
+[addresses]
+realm="0xcaffe"
+source_address="0x87"
+resource_account="0x14"
