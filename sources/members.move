@@ -4,7 +4,7 @@ module realm::Members{
     use std::string::{String,utf8};
     use std::signer;
     use std::table;
- 
+    friend realm::Treasury;
     struct MemberRecord has store,key,copy,drop{
         realm_address:address,
         status:u8,
@@ -87,7 +87,7 @@ module realm::Members{
 
     }
 
-    fun get_member_data_role(member_address:address,realm_address:address):String acquires RealmMemberships{
+    public (friend) fun get_member_data_role(member_address:address,realm_address:address):String acquires RealmMemberships{
         let member_datas=borrow_global<RealmMemberships>(realm_address);
         table::borrow(&member_datas.realms,member_address).role
     }
