@@ -8,7 +8,6 @@ module realm::Fundraise{
     use std::simple_map::{SimpleMap,Self};
     use std::coin::{transfer,register,Self,MintCapability,BurnCapability,balance};
     use std::string::utf8;
-    use std::debug;
     use std::vector;
     #[test_only]
     use std::aptos_coin::{AptosCoin,initialize_for_test};
@@ -92,7 +91,6 @@ module realm::Fundraise{
         let support_amount=if(amount>(fundraise_data.fundraise_cap-fundraise_data.raised_amount)){
           Treasury::change_fundraise_status(treasury_address,false,realm_address);
           fundraise_data.is_active=false;
-          debug::print(&fundraise_data.is_active);
           fundraise_data.fundraise_cap-fundraise_data.raised_amount
         }else{
             amount
@@ -129,7 +127,6 @@ module realm::Fundraise{
          
          transfer<CoinType>(supporter,treasury_address,support_amount);
          fundraise_data.raised_amount=fundraise_data.raised_amount+support_amount;
-         debug::print(&fundraise_data.raised_amount);
     
     }
 
@@ -178,8 +175,7 @@ module realm::Fundraise{
        assert!(deposit_data.fundraise_index==1,7);
        let fundraises=borrow_global<Fundraises>(treasury_address);
        assert!(vector::length(&fundraises.fundraises)==1,8);
-       let fundraise_data=vector::borrow(&fundraises.fundraises,0);
-       debug::print(&fundraise_data.raised_amount);
-       //TODO:check why fundraise_record 
+       let _fundraise_data=vector::borrow(&fundraises.fundraises,0);
+       //TODO:check why fundraise_record does not have latest data
     }
 }

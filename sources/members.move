@@ -6,6 +6,7 @@ module realm::Members{
     use std::table;
     friend realm::Treasury;
     friend realm::Fundraise;
+    friend realm::Governance;
     struct MemberRecord has store,key,copy,drop{
         realm_address:address,
         status:u8,

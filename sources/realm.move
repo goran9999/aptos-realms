@@ -9,6 +9,7 @@ module realm::Realm{
     friend realm::Members;
     friend realm::Treasury;
     friend realm::Fundraise;
+    friend realm::Governance;
     #[test_only]
     use aptos_framework::account::create_account_for_test;
 

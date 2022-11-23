@@ -11,6 +11,7 @@ module realm::Treasury{
      use std::type_info;
 
      friend realm::Fundraise;
+     friend realm::Governance;
 
     struct Treasury has store{
         realm:address,
@@ -38,7 +39,7 @@ module realm::Treasury{
         }
     }
 
-    fun create_treasury<CoinType>(realm_authority:&signer,realm_address:address,name:vector<u8>):address acquires RealmTreasuries{
+    public entry fun create_treasury<CoinType>(realm_authority:&signer,realm_address:address,name:vector<u8>):address acquires RealmTreasuries{
         let realm_auth_address=signer::address_of(realm_authority);
         let _role=Members::get_member_data_role(realm_auth_address,realm_address);
        // assert!(Realm::is_valid_role_for_action(role,CREATE_TREASURY_ACTION,&realm_address),ENOT_VALID_ACTION_FOR_ROLE);
