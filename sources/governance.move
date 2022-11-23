@@ -36,9 +36,7 @@ module realm::Governance{
         //TODO:check role permission for action
         let realm_signer=Realm::get_realm_by_address(realm_address);
 
-        assert!(governance_config.max_voting_time>=MIN_VOTING_TIME,EINVALID_VOTING_TIME);
-
-        assert!(governance_config.approval_quorum>=MIN_APPROVAL_QUORUM,EINVALID_VOTING_QUORUM);
+       assert_is_valid_governance_config(&governance_config);
 
         if(!exists<RealmGovernances>(realm_address)){
             move_to(&realm_signer,RealmGovernances{
@@ -54,7 +52,17 @@ module realm::Governance{
         });
     }
 
-    public (friend) fun get_quorum_and_voting_time(realm_address:address,governaned_account:address):GovernanceConfig acquires RealmGovernances{
+    public entry fun set_governance_config(governed_account:&signer,realm_address:address,governance_config:GovernanceConfig)acquires RealmGovernances{
+        let governances=borrow_global_mut<RealmGovernances>(realm_address);
+        let governed_account_address=signer::address_of(governed_account);
+        let governance=simple_map::borrow_mut(&mut governances.governances,&governed_account_address);
+
+        assert_is_valid_governance_config(&governance_config);
+
+        governance.governance_config=governance_config;
+    }
+
+    public (friend) fun get_governance_config(realm_address:address,governaned_account:address):GovernanceConfig acquires RealmGovernances{
         let governances=borrow_global<RealmGovernances>(realm_address);
         let governance=simple_map::borrow(&governances.governances,&governaned_account);
         governance.governance_config
@@ -68,6 +76,12 @@ module realm::Governance{
         }else{
             governance.voting_proposal_count=governance.voting_proposal_count-1;
         }
+    }
+
+    fun assert_is_valid_governance_config(config:&GovernanceConfig){
+        assert!(config.max_voting_time>=MIN_VOTING_TIME,EINVALID_VOTING_TIME);
+
+        assert!(config.approval_quorum>=MIN_APPROVAL_QUORUM,EINVALID_VOTING_QUORUM);
     }
      
      #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15)]
