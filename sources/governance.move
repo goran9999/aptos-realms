@@ -11,8 +11,7 @@ module realm::Governance{
     struct Governance has store,copy,drop{
         realm:address,
         voting_proposal_count:u64,
-        max_voting_time:u64,
-        approval_quorum:u64,
+        governance_config:GovernanceConfig,
         min_weight_to_create_proposal:Option<u64>,
     }
 
@@ -20,21 +19,26 @@ module realm::Governance{
         governances:SimpleMap<address,Governance>
     }
 
+    struct GovernanceConfig has store,drop,copy{
+        max_voting_time:u64,
+        approval_quorum:u8
+    }
+
     const MIN_VOTING_TIME:u64=7*86400+1;
-    const MIN_APPROVAL_QUORUM:u64=51;
+    const MIN_APPROVAL_QUORUM:u8=51;
 
     const EINVALID_VOTING_TIME:u64=8;
     const EINVALID_VOTING_QUORUM:u64=9;
 
-    public entry fun create_governance(creator:&signer,realm_address:address,max_voting_time:u64,approval_quorum:u64,min_weight_to_create_proposal:Option<u64>,governed_account:address)acquires RealmGovernances{
+    public entry fun create_governance(creator:&signer,realm_address:address,min_weight_to_create_proposal:Option<u64>,governed_account:address,governance_config:GovernanceConfig)acquires RealmGovernances{
         let signer_address=signer::address_of(creator);
         let _role=Members::get_member_data_role(signer_address,realm_address);
         //TODO:check role permission for action
         let realm_signer=Realm::get_realm_by_address(realm_address);
 
-        assert!(max_voting_time>=MIN_VOTING_TIME,EINVALID_VOTING_TIME);
+        assert!(governance_config.max_voting_time>=MIN_VOTING_TIME,EINVALID_VOTING_TIME);
 
-        assert!(approval_quorum>=MIN_APPROVAL_QUORUM,EINVALID_VOTING_QUORUM);
+        assert!(governance_config.approval_quorum>=MIN_APPROVAL_QUORUM,EINVALID_VOTING_QUORUM);
 
         if(!exists<RealmGovernances>(realm_address)){
             move_to(&realm_signer,RealmGovernances{
@@ -43,18 +47,17 @@ module realm::Governance{
         };
         let governances=borrow_global_mut<RealmGovernances>(realm_address);
         simple_map::add(&mut governances.governances,governed_account,Governance{
-            max_voting_time,
-            approval_quorum,
+            governance_config,
             voting_proposal_count:0,
             realm:realm_address,
             min_weight_to_create_proposal
         });
     }
 
-    public (friend) fun get_quorum_and_voting_time(realm_address:address,governaned_account:address):(u64,u64) acquires RealmGovernances{
+    public (friend) fun get_quorum_and_voting_time(realm_address:address,governaned_account:address):GovernanceConfig acquires RealmGovernances{
         let governances=borrow_global<RealmGovernances>(realm_address);
         let governance=simple_map::borrow(&governances.governances,&governaned_account);
-        (governance.approval_quorum,governance.max_voting_time)
+        governance.governance_config
     }
 
     public (friend) fun change_proposal_count(realm_address:address,governaned_account:address,is_increase:bool)acquires RealmGovernances{
@@ -75,8 +78,8 @@ module realm::Governance{
         let realm=Realm::get_realm_by_address(realm_address);
         Treasury::init_treasury_resource(&realm);
         let treasury_address=Treasury::create_treasury<AptosCoin>(account_creator,realm_address,b"First treasury");
-        create_governance(account_creator,realm_address,40*86400+1,55,option::none(),treasury_address);
+        create_governance(account_creator,realm_address,option::none(),treasury_address,GovernanceConfig{max_voting_time:40*86400+1,approval_quorum:55});
         let realm_governances=borrow_global<RealmGovernances>(realm_address).governances;
-        assert!(simple_map::borrow(&realm_governances,&treasury_address).approval_quorum==55,0);
+        assert!(simple_map::borrow(&realm_governances,&treasury_address).governance_config.approval_quorum==55,0);
      }
 }
