@@ -12,7 +12,7 @@ module realm::Realm{
     friend realm::Governance;
     #[test_only]
     use aptos_framework::account::create_account_for_test;
-
+    friend realm::Proposal;
      struct Realms has key{
         accounts:Table<String,address>,
     }
@@ -31,8 +31,8 @@ module realm::Realm{
 
     }
 
-    public fun init_module(resource_account:signer){
-        move_to(&resource_account,Realms{
+    public fun init_module(resource_account:&signer){
+        move_to(resource_account,Realms{
             accounts:table::new(),
         })
     }
@@ -88,12 +88,12 @@ module realm::Realm{
     }
  
     #[test_only]
-    public fun setup_test(creator:signer){
+    public fun setup_test(creator:&signer){
         init_module(creator);
     }
     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15)]
-    public (friend)  fun test_create_realm(creator:signer,account_creator:&signer,resource_account:signer,realm_account:&signer) acquires Realms,Realm{
-        create_account_for_test(signer::address_of(&creator));
+    public (friend)  fun test_create_realm(creator:&signer,account_creator:&signer,resource_account:&signer,realm_account:&signer) acquires Realms,Realm{
+        create_account_for_test(signer::address_of(creator));
         let name=b"Genesis Realm";
         setup_test(resource_account);
         let map=simple_map::create<String,vector<u8>>();
@@ -118,7 +118,7 @@ module realm::Realm{
     public entry fun test_create_realm_with_taken_name(creator:signer,account_creator:signer,resource_account:signer,realm_account:signer,second_realm:signer) acquires Realms,Realm{
         create_account_for_test(signer::address_of(&creator));
         let name=b"Genesis Realm";
-        setup_test(resource_account);
+        setup_test(&resource_account);
          let role_config_data=RoleConfig{
             role_config:simple_map::create()
         };

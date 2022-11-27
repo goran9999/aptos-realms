@@ -9,6 +9,7 @@ module realm::Fundraise{
     use std::coin::{transfer,register,Self,MintCapability,BurnCapability,balance};
     use std::string::utf8;
     use std::vector;
+    friend realm::Proposal;
     #[test_only]
     use std::aptos_coin::{AptosCoin,initialize_for_test};
     use aptos_framework::account::create_account_for_test;
@@ -82,7 +83,7 @@ module realm::Fundraise{
     public entry fun deposit_to_treasury<CoinType>(supporter:&signer,treasury_address:address,realm_address:address,amount:u64) acquires Fundraises,RealmDeposits{
         let (coin_address,_is_fundraise_active,fundraise_count)=Treasury::get_treasury_state(treasury_address,realm_address);
         let signer_address=signer::address_of(supporter);
-        assert!(Members::is_member(copy signer_address),ENOT_A_MEMBER);
+        assert!(Members::is_member(realm_address,copy signer_address),ENOT_A_MEMBER);
         let coin_type=type_info::type_of<CoinType>();
         assert!(type_info::account_address(&coin_type)==coin_address,EINVALID_SUPPORT_COIN);
         let fundraise_data_vec=borrow_global_mut<Fundraises>(treasury_address).fundraises;
@@ -100,6 +101,7 @@ module realm::Fundraise{
                 deposits:simple_map::create()
             })
         };
+        //TODO:multiply deposit amount with decimals of coin
         let realm_deposits=borrow_global_mut<RealmDeposits>(signer_address);
         if(simple_map::contains_key(&realm_deposits.deposits,&treasury_address)){
             let deposits_map=simple_map::borrow_mut(&mut realm_deposits.deposits,&treasury_address);
@@ -130,6 +132,24 @@ module realm::Fundraise{
     
     }
 
+    public (friend) fun get_member_deposit_amount(treasury_address:address,member_address:address):u64 acquires RealmDeposits,Fundraises{
+        let realm_deposits=borrow_global<RealmDeposits>(member_address);
+        let deposits_map=simple_map::borrow(&realm_deposits.deposits,&treasury_address);
+        let fundraises=borrow_global<Fundraises>(copy treasury_address);
+        let fundraise_count=vector::length(&fundraises.fundraises);
+        let total_deposit_amount:u64=0;
+        let counter=1;
+        while (counter <= fundraise_count){
+            if(simple_map::contains_key(deposits_map,&counter)){
+                total_deposit_amount=total_deposit_amount+simple_map::borrow(deposits_map,&counter).amount;
+            }else{
+                continue
+            };
+            counter=counter+1;
+        };
+        total_deposit_amount
+    }
+
     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15)]
     public fun test_create_fundraise(creator:signer,account_creator:&signer,resource_account:signer,realm_account:&signer):address acquires Fundraises{
         let treasury_address=Treasury::test_create_treasury(creator,account_creator,resource_account,realm_account);
@@ -146,14 +166,27 @@ module realm::Fundraise{
         assert!(is_active,6);
         treasury_address
     }
+
+
     #[test_only]
     struct MintAndBurnCap has key{
         mint_cap:MintCapability<AptosCoin>,
         burn_cap:BurnCapability<AptosCoin>
     }
+
+      public (friend) fun airdrop_aptos_coin(wallet:&signer,aptos_framework:&signer){
+        register<AptosCoin>(wallet);
+        let(burn,mint)=initialize_for_test(aptos_framework);
+        let coin = coin::mint<AptosCoin>(100, &mint);
+        coin::deposit(signer::address_of(wallet), coin);
+        move_to(wallet,MintAndBurnCap{
+            mint_cap:mint,
+            burn_cap:burn
+        });
+    }
   
     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15,aptos_framework=@0x1)]
-    public fun test_deposit_to_fundraise(creator:signer,account_creator:&signer,resource_account:signer,realm_account:&signer,aptos_framework:signer)acquires Fundraises,RealmDeposits{
+    public(friend) fun test_deposit_to_fundraise(creator:signer,account_creator:&signer,resource_account:signer,realm_account:&signer,aptos_framework:signer)acquires Fundraises,RealmDeposits{
         let treasury_address=test_create_fundraise(creator,account_creator,resource_account,realm_account);
         create_account_for_test(signer::address_of(account_creator));
         let realm_address=Realm::get_realm_address_by_name(utf8(b"Genesis Realm"));
@@ -178,4 +211,6 @@ module realm::Fundraise{
        let _fundraise_data=vector::borrow(&fundraises.fundraises,0);
        //TODO:check why fundraise_record does not have latest data
     }
+
+  
 }

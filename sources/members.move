@@ -7,6 +7,7 @@ module realm::Members{
     friend realm::Treasury;
     friend realm::Fundraise;
     friend realm::Governance;
+    friend realm::Proposal;
     struct MemberRecord has store,key,copy,drop{
         realm_address:address,
         status:u8,
@@ -100,12 +101,14 @@ module realm::Members{
         table::borrow(&member_datas.realms,member_address).role
     }
 
-    public(friend) fun is_member(member:address):bool{
-        exists<MemberRecord>(member)
+    public(friend) fun is_member(realm_address:address,member:address):bool acquires RealmMemberships{
+        let realm_memberships=borrow_global<RealmMemberships>(realm_address);
+        let member_record=table::borrow(&realm_memberships.realms,member);
+        member_record.user_address==member
     }
     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15)]
     public fun test_add_founder(creator:signer,account_creator:&signer,resource_account:signer,realm_account:&signer) acquires RealmMemberships{
-        Realm::test_create_realm(creator,account_creator,resource_account,realm_account);
+        Realm::test_create_realm(&creator,account_creator,&resource_account,realm_account);
         let realm_address=Realm::get_realm_address_by_name(utf8(b"Genesis Realm"));
         let founder_address=signer::address_of(account_creator);
         add_founder_role(account_creator,realm_address);

@@ -6,9 +6,8 @@ module realm::Governance{
     use std::account::{create_resource_account,SignerCapability,create_signer_with_capability};
     use std::option::{Option,Self};
     use realm::Members;
+    use aptos_framework::timestamp;
     use realm::Realm;
-    use std::debug;
-    use realm::Treasury;
     friend realm::Proposal;
     struct Governance has store,drop,key{
         realm:address,
@@ -36,13 +35,15 @@ module realm::Governance{
     const EINVALID_REALM_FOR_GOVERNANCE:u64=10;
     const EINVALID_GOVERNED_ACCOUNT:u64=11;
 
-    public entry fun create_governance(creator:&signer,realm_address:address,min_weight_to_create_proposal:Option<u64>,governed_account:vector<u8>,governance_config:GovernanceConfig)acquires RealmGovernances,Governance{
+    public entry fun create_governance(creator:&signer,realm_address:address,min_weight_to_create_proposal:Option<u64>,governed_account:vector<u8>,governance_config:GovernanceConfig):address acquires RealmGovernances,Governance{
         let signer_address=signer::address_of(creator);
         let _role=Members::get_member_data_role(signer_address,realm_address);
         //TODO:check role permission for action
         let realm_signer=Realm::get_realm_by_address(realm_address);
 
        assert_is_valid_governance_config(&governance_config);
+
+       let governance_address:address;
 
         if(!exists<RealmGovernances>(realm_address)){
             let (governance,governance_signer_cap)=create_resource_account(&realm_signer,governed_account);
@@ -54,6 +55,7 @@ module realm::Governance{
             governance_signer_cap,
             governed_account:utf8(governed_account)
          });
+            governance_address=signer::address_of(&governance);
             let governances_vector=vector::empty<address>();
             let governance_address=signer::address_of(&governance);
             vector::push_back(&mut governances_vector,governance_address);
@@ -65,6 +67,7 @@ module realm::Governance{
             let last_governance=vector::borrow(&realm_governances.governances,vector::length(&realm_governances.governances)-1);
             let governance_signer=get_governance_as_signer(*last_governance);
             let (new_governance,new_governance_cap)=create_resource_account(&governance_signer,governed_account);
+            governance_address=signer::address_of(&new_governance);
             move_to(&new_governance,Governance{
                 governance_config,
                 voting_proposal_count:0,
@@ -74,8 +77,8 @@ module realm::Governance{
                 governed_account:utf8(governed_account)
             });
             vector::push_back(&mut realm_governances.governances,signer::address_of(&new_governance));
-        }
-        
+        };
+        governance_address
     }
 
     public entry fun set_governance_config(governed_account:&signer,realm_address:address,governance_config:GovernanceConfig,governance:address)acquires RealmGovernances,Governance{
@@ -104,9 +107,10 @@ module realm::Governance{
         }
     }
 
-    // public (friend) fun get_governance(governance_address:address):&Governance acquires Governance{
-    //    borrow_global<Governance>(governance_address)
-    // }
+    public (friend) fun get_governance(governance_address:address):(u64,Option<u64>) acquires Governance{
+       let governance=borrow_global<Governance>(governance_address);
+        (governance.voting_proposal_count,governance.min_weight_to_create_proposal)
+    }
 
     public (friend) fun get_governance_as_signer(governance_address:address):signer acquires Governance{
         let governance=borrow_global<Governance>(governance_address);
@@ -120,18 +124,17 @@ module realm::Governance{
         assert!(config.approval_quorum>=MIN_APPROVAL_QUORUM,EINVALID_VOTING_QUORUM);
     }
 
-    fun assert_is_valid_realm_for_governance(realm:address,governance:address) acquires RealmGovernances{
+    public (friend)fun assert_is_valid_realm_for_governance(realm:address,governance:address) acquires RealmGovernances{
         let realm_governances=borrow_global<RealmGovernances>(realm);
         assert!(vector::contains(&realm_governances.governances,&governance),EINVALID_REALM_FOR_GOVERNANCE);
     }
      
-     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15)]
-     public fun test_create_governance(creator:signer,account_creator:&signer,resource_account:signer,realm_account:&signer) acquires RealmGovernances,Governance{
+     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15,aptos_framework=@0x1)]
+     public fun test_create_governance(creator:&signer,account_creator:&signer,resource_account:&signer,realm_account:&signer,aptos_framework:&signer) acquires RealmGovernances,Governance{
         Realm::test_create_realm(creator,account_creator,resource_account,realm_account);
+        timestamp::set_time_has_started_for_testing(aptos_framework);
         let realm_address=Realm::get_realm_address_by_name(utf8(b"Genesis Realm"));
         Members::add_founder_role(account_creator,realm_address);
-        let realm=Realm::get_realm_by_address(realm_address);
-        Treasury::init_treasury_resource(&realm);
         //TODO:check how to turn address to vector<u8>
         create_governance(account_creator,realm_address,option::none(),b"treasury_address",GovernanceConfig{max_voting_time:40*86400+1,approval_quorum:55});
         let realm_governances=borrow_global<RealmGovernances>(realm_address).governances;
@@ -143,7 +146,11 @@ module realm::Governance{
         let realm_governances_new=borrow_global<RealmGovernances>(realm_address).governances;
         let new_governance_address=vector::borrow(&realm_governances_new,vector::length(&realm_governances_new)-1);
         let new_governance=borrow_global<Governance>(*new_governance_address);
-        debug::print(&new_governance.governance_config);
         assert!(new_governance.governance_config.approval_quorum==88,0);
+     }
+
+     #[test_only]
+     public(friend) fun create_governance_for_test(creator:&signer,realm_address:address):address acquires RealmGovernances,Governance{
+        create_governance(creator,realm_address,option::none(),b"some treasury",GovernanceConfig{max_voting_time:86400*7+1,approval_quorum:55})
      }
 }
