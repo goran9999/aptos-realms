@@ -94,6 +94,14 @@ module realm::Treasury{
 
     }
 
+    public(friend) fun get_deposit_and_address(treasury_address:address,realm:address):(u64,address) acquires RealmTreasuries{
+        let treasuries=borrow_global<RealmTreasuries>(realm);
+        let treasury=simple_map::borrow(&treasuries.treasuries,&treasury_address);
+        //TODO:figure out how to make this flexible(to make it work with any coin,not only AptosCoin)
+        (balance<AptosCoin>(copy treasury_address),treasury.coin_address)
+
+    }
+
     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15)]
     public entry fun test_create_treasury(creator:signer,account_creator:&signer,resource_account:signer,realm_account:&signer):address acquires RealmTreasuries{
         Members::test_add_founder(creator,account_creator,resource_account,realm_account);

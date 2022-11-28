@@ -5,7 +5,7 @@ module realm::Proposal{
     use std::simple_map::{SimpleMap,Self};
     use realm::Governance;
     use realm::Members;
-    use std::option::{Self};
+    use std::option::{Self,Option};
     use std::signer;
     use std::timestamp;
     use realm::Fundraise;
@@ -14,7 +14,7 @@ module realm::Proposal{
     use realm::Treasury;
     use std::aptos_coin::AptosCoin;
     use realm::Realm;
-    struct Proposal has store{
+    struct Proposal has store,copy,drop{
         name:String,
         description:String,
         approve_vote_weight:u64,
@@ -22,6 +22,7 @@ module realm::Proposal{
         state:u8,
         veto_vote_weight:u64,
         voting_at:u64,
+        index:u64
         //TODO:implement script execution hash
     }
 
@@ -29,17 +30,27 @@ module realm::Proposal{
         proposals:vector<Proposal>
     }
 
-    struct VoterWeights has key{
+    struct VoterWeights has key,copy{
         weights:SimpleMap<address,VoterWeihtRecord>
     }
 
-    struct VoterWeihtRecord has store{
+    struct VoterWeihtRecord has store,copy,drop{
         realm:address,
         weight:u64,
         //TODO:check how to store updated_at slot
         //voter_weigt_expiry:u64
         user:address,
+    }
 
+    struct MaxVoterWeightRecord has store,copy,drop{
+        realm:address,
+        max_voter_weight:u64,
+        coin_address:address,
+        max_voter_weight_expiry:Option<u64>,
+    }
+
+    struct MaxVoterWeights has key{
+        max_voter_weights:SimpleMap<u64,MaxVoterWeightRecord>
     }
 
     const VOTING:u8=0;
@@ -56,8 +67,12 @@ module realm::Proposal{
     const EINVALID_VOTER_WEIGHT_RECORD:u64=13;
     const ENOT_ENOUGH_WEIGHT_TO_CREATE_PROPOSAL:u64=14;
     const ENOT_A_MEMBER:u64=15;
+    const EINVALID_PROPOSAL_STATE:u64=16;
 
-    public entry fun create_proposal(creator:&signer,realm:address,governance:address,name:String,description:String)acquires VoterWeights,GovernanceProposals{
+    const YES_VOTE:u64=0;
+    const NO_VOTE:u64=1;
+
+    public entry fun create_proposal(creator:&signer,realm:address,governance:address,name:String,description:String,treasury:address)acquires VoterWeights,GovernanceProposals,MaxVoterWeights{
         Governance::assert_is_valid_realm_for_governance(realm,governance);
         let governance_signer=Governance::get_governance_as_signer(governance);
         if(!exists<GovernanceProposals>(governance)){
@@ -75,6 +90,7 @@ module realm::Proposal{
             assert!(option::extract(&mut min_weight_to_create_proposal)<voter_weight_record.weight,ENOT_ENOUGH_WEIGHT_TO_CREATE_PROPOSAL);
         };
         let governance_proposals=borrow_global_mut<GovernanceProposals>(governance);
+        let proposal_index=vector::length(&governance_proposals.proposals);
         vector::push_back(&mut governance_proposals.proposals,Proposal{
             name,
             description,
@@ -82,7 +98,21 @@ module realm::Proposal{
             deny_vote_weight:0,
             approve_vote_weight:0,
             veto_vote_weight:0,
-            voting_at:timestamp::now_seconds()
+            voting_at:timestamp::now_seconds(),
+            index:proposal_index
+        });
+        if(!exists<MaxVoterWeights>(governance)){
+            move_to(&governance_signer,MaxVoterWeights{
+                max_voter_weights:simple_map::create()
+            })
+        };
+        let max_voter_weights=borrow_global_mut<MaxVoterWeights>(governance).max_voter_weights;
+        let (deposited_amount,coin_address)=Treasury::get_deposit_and_address(treasury,realm);
+        simple_map::add(&mut max_voter_weights,proposal_index,MaxVoterWeightRecord{
+            realm:realm,
+            max_voter_weight_expiry:option::none(),
+            max_voter_weight:deposited_amount,
+            coin_address:coin_address
         });
 
     }
@@ -110,6 +140,30 @@ module realm::Proposal{
          };
     }
 
+    public entry fun cast_vote(voter:&signer,realm_address:address,governance:address,proposal_id:u64,vote_type:u64) acquires VoterWeights,GovernanceProposals,MaxVoterWeights{
+        let voter_address=signer::address_of(voter);
+        let voter_weights=borrow_global<VoterWeights>(voter_address).weights;
+        let voter_weight_record=simple_map::borrow(&voter_weights,&governance);
+        let governance_proposals=borrow_global_mut<GovernanceProposals>(copy governance);
+        let proposal=vector::borrow_mut(&mut governance_proposals.proposals,proposal_id);
+        Governance::assert_is_valid_realm_for_governance(realm_address,governance);
+        assert_is_valid_proposal_for_vote(*proposal);
+        if(vote_type==YES_VOTE){
+            proposal.approve_vote_weight=proposal.approve_vote_weight+voter_weight_record.weight;
+        }else{
+            proposal.deny_vote_weight=proposal.deny_vote_weight+voter_weight_record.weight;
+        };
+        let (approval_quorum,_max_voting_time)=Governance::get_governance_config(realm_address,governance);
+        let max_voter_weights=borrow_global<MaxVoterWeights>(governance).max_voter_weights;
+        let max_voter_weight_record=simple_map::borrow(&max_voter_weights,&proposal_id);
+        if(proposal.approve_vote_weight/max_voter_weight_record.max_voter_weight > (approval_quorum as u64)){
+            proposal.state=SUCCEDED;
+        }else if(proposal.approve_vote_weight/max_voter_weight_record.max_voter_weight > (approval_quorum as u64)){
+            proposal.state=DEFEATED;
+        };
+        
+
+    }
 
     fun assert_is_valid_voter_weight(governance:address,member:address)acquires VoterWeights{
         let voter_weights=borrow_global<VoterWeights>(member);
@@ -118,9 +172,14 @@ module realm::Proposal{
         //TODO:add voter_weight_expiry assertion
     }
 
+    fun assert_is_valid_proposal_for_vote(proposal:Proposal){
+        //TODO:add check for max_voting_time
+        assert!(proposal.state==0,EINVALID_PROPOSAL_STATE);
+    }
+
 
     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15,aptos_framework=@0x1)]
-    public(friend) fun test_create_proposal(creator:&signer,account_creator:&signer,resource_account:&signer,realm_account:&signer,aptos_framework:&signer)acquires VoterWeights,GovernanceProposals{
+    public(friend) fun test_create_proposal(creator:&signer,account_creator:&signer,resource_account:&signer,realm_account:&signer,aptos_framework:&signer)acquires VoterWeights,GovernanceProposals,MaxVoterWeights{
         Realm::test_create_realm(creator,account_creator,resource_account,realm_account);
         let realm_address=Realm::get_realm_address_by_name(utf8(b"Genesis Realm"));
         timestamp::set_time_has_started_for_testing(aptos_framework);
@@ -132,7 +191,7 @@ module realm::Proposal{
         Fundraise::airdrop_aptos_coin(account_creator,aptos_framework);
         Fundraise::deposit_to_treasury<AptosCoin>(account_creator,treasury_address,realm_address,2);
         set_voter_weight(account_creator,governance_address,treasury_address,realm_address);
-        create_proposal(account_creator,realm_address,governance_address,utf8(b"Genesis proposal"),utf8(b"Genesis proposal desc"));
+        create_proposal(account_creator,realm_address,governance_address,utf8(b"Genesis proposal"),utf8(b"Genesis proposal desc"),treasury_address);
         let governance_proposals=borrow_global<GovernanceProposals>(governance_address);
         let proposal=vector::borrow(&governance_proposals.proposals,0);
         assert!(proposal.name==utf8(b"Genesis proposal"),0);

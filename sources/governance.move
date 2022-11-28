@@ -91,10 +91,10 @@ module realm::Governance{
 
     }
 
-    public (friend) fun get_governance_config(realm_address:address,governance:address):GovernanceConfig acquires RealmGovernances,Governance{
+    public (friend) fun get_governance_config(realm_address:address,governance:address):(u8,u64) acquires RealmGovernances,Governance{
         assert_is_valid_realm_for_governance(realm_address,governance);
         let governance=borrow_global<Governance>(governance);
-        governance.governance_config
+        (governance.governance_config.approval_quorum,governance.governance_config.max_voting_time)
     }
 
     public (friend) fun change_proposal_count(realm_address:address,governance:address,is_increase:bool)acquires Governance,RealmGovernances{
@@ -118,15 +118,16 @@ module realm::Governance{
         
     }
 
-    fun assert_is_valid_governance_config(config:&GovernanceConfig){
-        assert!(config.max_voting_time>=MIN_VOTING_TIME,EINVALID_VOTING_TIME);
-
-        assert!(config.approval_quorum>=MIN_APPROVAL_QUORUM,EINVALID_VOTING_QUORUM);
-    }
 
     public (friend)fun assert_is_valid_realm_for_governance(realm:address,governance:address) acquires RealmGovernances{
         let realm_governances=borrow_global<RealmGovernances>(realm);
         assert!(vector::contains(&realm_governances.governances,&governance),EINVALID_REALM_FOR_GOVERNANCE);
+    }
+
+    fun assert_is_valid_governance_config(config:&GovernanceConfig){
+        assert!(config.max_voting_time>=MIN_VOTING_TIME,EINVALID_VOTING_TIME);
+
+        assert!(config.approval_quorum>=MIN_APPROVAL_QUORUM,EINVALID_VOTING_QUORUM);
     }
      
      #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15,aptos_framework=@0x1)]
