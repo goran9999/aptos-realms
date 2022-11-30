@@ -91,6 +91,10 @@ module realm::Governance{
 
     }
 
+    public entry fun get_realm_governances(realm_address:address):vector<address> acquires RealmGovernances{
+        borrow_global<RealmGovernances>(realm_address).governances
+    }
+
     public (friend) fun get_governance_config(realm_address:address,governance:address):(u8,u64) acquires RealmGovernances,Governance{
         assert_is_valid_realm_for_governance(realm_address,governance);
         let governance=borrow_global<Governance>(governance);

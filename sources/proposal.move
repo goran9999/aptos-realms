@@ -106,9 +106,9 @@ module realm::Proposal{
                 max_voter_weights:simple_map::create()
             })
         };
-        let max_voter_weights=borrow_global_mut<MaxVoterWeights>(governance).max_voter_weights;
+        let max_voter_weights=borrow_global_mut<MaxVoterWeights>(governance);
         let (deposited_amount,coin_address)=Treasury::get_deposit_and_address(treasury,realm);
-        simple_map::add(&mut max_voter_weights,proposal_index,MaxVoterWeightRecord{
+        simple_map::add(&mut max_voter_weights.max_voter_weights,proposal_index,MaxVoterWeightRecord{
             realm:realm,
             max_voter_weight_expiry:option::none(),
             max_voter_weight:deposited_amount,
@@ -156,9 +156,9 @@ module realm::Proposal{
         let (approval_quorum,_max_voting_time)=Governance::get_governance_config(realm_address,governance);
         let max_voter_weights=borrow_global<MaxVoterWeights>(governance).max_voter_weights;
         let max_voter_weight_record=simple_map::borrow(&max_voter_weights,&proposal_id);
-        if(proposal.approve_vote_weight/max_voter_weight_record.max_voter_weight > (approval_quorum as u64)){
+        if((proposal.approve_vote_weight/max_voter_weight_record.max_voter_weight)*100 > (approval_quorum as u64)){
             proposal.state=SUCCEDED;
-        }else if(proposal.approve_vote_weight/max_voter_weight_record.max_voter_weight > (approval_quorum as u64)){
+        }else if((proposal.deny_vote_weight/max_voter_weight_record.max_voter_weight)*100 > (approval_quorum as u64)){
             proposal.state=DEFEATED;
         };
         
@@ -202,7 +202,33 @@ module realm::Proposal{
         let voter_weights=borrow_global<VoterWeights>(member_address);
         let voter_weight=simple_map::borrow(&voter_weights.weights,&governance_address);
         assert!(voter_weight.weight==2,4);
+        let max_voter_weights=borrow_global<MaxVoterWeights>(governance_address).max_voter_weights;
+        assert!(simple_map::length(&max_voter_weights)==1,4);
 
     }
+
+     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15,aptos_framework=@0x1)]
+    public(friend) fun test_cast_vote(creator:&signer,account_creator:&signer,resource_account:&signer,realm_account:&signer,aptos_framework:&signer):address acquires VoterWeights,GovernanceProposals,MaxVoterWeights{
+        test_create_proposal(creator,account_creator,resource_account,realm_account,aptos_framework);
+        let realm_address=Realm::get_realm_address_by_name(utf8(b"Genesis Realm"));
+        let realm_governances=Governance::get_realm_governances(realm_address);
+        let governance=vector::borrow(&realm_governances,vector::length(&realm_governances)-1);
+        cast_vote(account_creator,realm_address,*governance,0,1);
+        let proposals=borrow_global<GovernanceProposals>(*governance);
+        let proposal=vector::borrow(&proposals.proposals,0);
+        assert!(proposal.state==DEFEATED,3);        
+        *governance
+
+    }
+
+     #[test(creator=@0xcaffe,account_creator=@0x99,resource_account=@0x14,realm_account=@0x15,aptos_framework=@0x1)]
+    #[expected_failure(abort_code = 16)]
+    public(friend) fun test_cast_vote_fail(creator:&signer,account_creator:&signer,resource_account:&signer,realm_account:&signer,aptos_framework:&signer)acquires VoterWeights,GovernanceProposals,MaxVoterWeights{
+        let governance=test_cast_vote(creator,account_creator,resource_account,realm_account,aptos_framework);
+        let realm_address=Realm::get_realm_address_by_name(utf8(b"Genesis Realm"));
+        cast_vote(account_creator,realm_address,governance,0,0);
+    }
+
+
 
 }
